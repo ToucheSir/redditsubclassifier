@@ -24,7 +24,7 @@ if __name__ == '__main__':
     subs = ['news', 'worldnews', 'nottheonion', 'circlejerk', 'atheism', 'gaming']
     data, targets = collectComments(subs)
 
-    tests = ['Florida man', 'fake', 'fps']
+    tests = ['Florida man', 'fake', 'fps', 'reddit', 'one']
 
     text_clf = Pipeline([('vect', CountVectorizer()),
                          ('tfidf', TfidfTransformer()),
