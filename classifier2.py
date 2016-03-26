@@ -1,11 +1,11 @@
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
-from sklearn.naive_bayes import MultinomialNB
+from sklearn.naive_bayes import MultinomialNB, BernoulliNB
 from sklearn.pipeline import Pipeline
 from sklearn.cross_validation import KFold
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.svm import SVC
+from sklearn.svm import SVC, NuSVC, LinearSVC
 
-from csv import DictReader
+from csv import DictReader, writer
 
 import numpy as np
 
@@ -187,9 +187,15 @@ if __name__ == '__main__':
         test_c = [comments[i] for i in test_i]
         test_l = leans[test_i]
 
-        text_clf = Pipeline([('vect', CountVectorizer(vocabulary=vocab, binary=True)),
-                             ('tfidf', TfidfTransformer()),
-                             ('clf', MultinomialNB()),
+        # cv = CountVectorizer(binary=True)
+        # counts = cv.fit_transform(train_c).toarray()
+        # hits = float(np.count_nonzero(counts))
+        # print counts.shape
+        # print 'sum = {} ({})'.format(hits, hits / (counts.shape[0] * counts.shape[1]))
+
+        text_clf = Pipeline([('vect', CountVectorizer(binary=True)),
+                             # ('tfidf', TfidfTransformer()),
+                             ('clf', LinearSVC()),
                              ])
 
         text_clf = text_clf.fit(train_c, train_l)
