@@ -1,32 +1,38 @@
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
-from sklearn.naive_bayes import MultinomialNB, BernoulliNB
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.pipeline import Pipeline
 from sklearn.cross_validation import KFold
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.svm import SVC, NuSVC, LinearSVC
+from sklearn.externals.joblib import Parallel, delayed
 
 from csv import DictReader, writer
 
 import numpy as np
 
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import MultinomialNB, BernoulliNB
+from sklearn.svm import SVC, NuSVC, LinearSVC
+from sklearn.linear_model import SGDClassifier
 
-def collectComments(file='comments.csv'):
+
+def collect_comments(filename='comments.csv'):
     data = []
 
-    with open(file) as csvdata:
+    with open(filename) as csvdata:
         reader = DictReader(csvdata)
         for row in reader:
             data.append(row['body'])
 
     return data
 
-def getData():
-    left_data = collectComments('political_left.csv')
-    right_data = collectComments('political_right.csv')
+
+def get_data():
+    left_data = collect_comments('political_left.csv')
+    right_data = collect_comments('political_right.csv')
     leans = np.concatenate((np.zeros(len(left_data)), np.ones(len(right_data))))
     return left_data + right_data, leans
 
-def getVocab():
+
+def get_vocab():
     tags_right = [
         "obama",
         "government",
@@ -176,10 +182,31 @@ def getVocab():
     ]
     return list(set(tags_left + tags_right))
 
-if __name__ == '__main__':
-    comments, leans = getData()
-    vocab = getVocab()
-    folds = KFold(len(comments), n_folds=5, shuffle=True)
+
+class Runner:
+    def __init__(self, comments, leans, vocab=[]):
+        self.comments = comments
+        self.leans = leans
+        self.vocab = vocab
+
+    def run(self, tests=[], trials=5):
+        banner = '{}({}): binary={} tfidf={}'
+        res = []
+        for (clf, args, clf_args) in tests:
+            test = [banner.format(clf.__name__, clf_args,
+                                  args.get('binary') or False,
+                                  args.get('tfidf') or True)]
+            test += Parallel(n_jobs=4)(delayed(run_classifier)
+                                       (self.comments, self.leans, clf, **args)
+                                       for _ in range(trials))
+            res.append(test)
+
+        return res
+
+
+def run_classifier(comments, leans, classifier, args={}, vocab=None, binary=False, tfidf=True, n_folds=10):
+    total = 0
+    folds = KFold(len(comments), n_folds=n_folds, shuffle=True)
 
     for train_i, test_i in folds:
         train_c = [comments[i] for i in train_i]
@@ -187,23 +214,70 @@ if __name__ == '__main__':
         test_c = [comments[i] for i in test_i]
         test_l = leans[test_i]
 
-        # cv = CountVectorizer(binary=True)
-        # counts = cv.fit_transform(train_c).toarray()
-        # hits = float(np.count_nonzero(counts))
-        # print counts.shape
-        # print 'sum = {} ({})'.format(hits, hits / (counts.shape[0] * counts.shape[1]))
-
-        text_clf = Pipeline([('vect', CountVectorizer(binary=True)),
-                             # ('tfidf', TfidfTransformer()),
-                             ('clf', LinearSVC()),
-                             ])
-
+        text_clf = Pipeline([
+            ('vect', (TfidfVectorizer if tfidf else
+                      CountVectorizer)(vocabulary=vocab, binary=binary)),
+            ('clf', classifier(**args)),
+        ])
         text_clf = text_clf.fit(train_c, train_l)
 
-        predicted = text_clf.predict(test_c)
-
         # for comment, plean, alean in zip(test_c, predicted, test_l):
-            # print('%s (%s): %r' % (plean, alean, comment))
-        print '\n~~~~~~\n'
+        # print('%s (%s): %r' % (plean, alean, comment))
+
+        predicted = text_clf.predict(test_c)
         correct = np.count_nonzero(predicted == test_l)
         print correct, len(test_l), float(correct) / float(len(test_l))
+        total += float(correct) / float(len(test_l))
+
+    return total / n_folds
+
+
+def write_out(filename, results):
+    with open(filename, 'w') as f:
+        out = writer(f)
+        for row in results:
+            out.writerow(row)
+
+
+if __name__ == '__main__':
+    comment_bodies, leanings = get_data()
+    vocabulary = get_vocab()
+    runner = Runner(comment_bodies, leanings, vocabulary)
+
+    print '''
+With Vocab:
+~~~~~~~~~~~
+    '''
+    write_out('no_vocab.csv', runner.run([
+        # Decision Trees
+        (DecisionTreeClassifier, {}, {}),
+        (DecisionTreeClassifier, {'binary': True}, {}),
+        # Random Forests
+        (RandomForestClassifier, {}, {}),
+        (RandomForestClassifier, {'binary': True}, {}),
+        (RandomForestClassifier, {}, {'n_estimators': 200}),
+        (RandomForestClassifier, {'binary': True}, {'n_estimators': 200}),
+        # Naive Bayes
+        (MultinomialNB, {}, {}),
+        (MultinomialNB, {'binary': True}, {}),
+        (BernoulliNB, {}, {}),
+        (BernoulliNB, {'binary': True}, {}),
+        # Gradient Descent
+        (SGDClassifier, {}, {'shuffle': True}),
+        (SGDClassifier, {'binary': True}, {'shuffle': True}),
+        # SVM (Nu-Support) -> uses linear & rbf kernels
+        (NuSVC, {}, {}),
+        (NuSVC, {'binary': True}, {}),
+        (NuSVC, {}, {'kernel': 'linear'}),
+        (NuSVC, {'binary': True}, {'kernel': 'linear'}),
+        # SVM (C-Support) -> uses linear & rbf kernels
+        (SVC, {}, {}),
+        (SVC, {'binary': True}, {}),
+        (SVC, {}, {'kernel': 'linear'}),
+        (SVC, {'binary': True}, {'kernel': 'linear'}),
+        # SVM (linear)
+        (LinearSVC, {}, {}),
+        (LinearSVC, {'binary': True}, {}),
+    ]))
+
+    # TODO(brian): with vocab

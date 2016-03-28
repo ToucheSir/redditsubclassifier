@@ -13,7 +13,7 @@ def collectComments(subs, file='comments.csv'):
     with open(file) as csvdata:
         reader = DictReader(csvdata)
         for row in reader:
-            if mappings.has_key(row['subreddit']):
+            if row['subreddit'] in mappings:
                 data.append(row['body'])
                 targets.append(mappings[row['subreddit']])
 
@@ -21,10 +21,10 @@ def collectComments(subs, file='comments.csv'):
 
 
 if __name__ == '__main__':
-    subs = ['news', 'worldnews', 'nottheonion', 'circlejerk', 'atheism', 'gaming']
+    subs = ['worldnews', 'nottheonion', 'circlejerk', 'atheism', 'gaming']
     data, targets = collectComments(subs)
 
-    tests = ['Florida man', 'fake', 'fps', 'reddit', 'one']
+    tests = ['Florida man', 'fake', 'fps', 'reddit', 'one', 'god']
 
     text_clf = Pipeline([('vect', CountVectorizer()),
                          ('tfidf', TfidfTransformer()),
